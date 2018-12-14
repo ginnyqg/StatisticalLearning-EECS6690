@@ -1,4 +1,4 @@
-#Table 1
+# Table 1
 
 Classification accuracy
 
@@ -12,6 +12,4 @@ Classification accuracy
 |Naive Bayesian  	       |            	|           	|           	|            |
 |Neural networks         |            	|            	|            	|            |
 |Classification Trees    |0.179    	    |0.185       	|0.494       	|0.456       |
-
-
 
