@@ -1,7 +1,7 @@
 #Table 1
 
 Classification accuracy
-|Method  	              |Error rate  	  	          |Area ratio  	  	          |
+|Method  	              |Error rate  	|  	          |Area ratio   |  	          |
 |  	                    |Training  	  |Validation  	|training  	  |Validation  	|
 |:--------------------- |:----------:	|:----------:	|:----------:	|:----------:	|
 |K-nearest neighbor  	  |  	          |  	          |           	|           	|
