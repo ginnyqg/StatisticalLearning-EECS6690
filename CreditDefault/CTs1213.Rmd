@@ -65,6 +65,8 @@ train = data.frame(train,PredLabel,PredTreeScore)
 PredLabelValid = predict(ctt,valid,type="class")
 PredTreeScoreValid = data.frame(predict(ctt,valid,type="vector"))$DEFAULT
 valid = data.frame(valid,PredLabelValid,PredTreeScoreValid)
+PredLabelValid2 = ifelse(valid$PredLabelValid=="DEFAULT",1,0)
+valid = data.frame(valid,PredLabelValid2)
 ```
 
 validation set error rate: 
@@ -169,20 +171,35 @@ a2v = sum(best_yyv-base_yyv)
 a1v/a2v
 ```
 
-
+Use the SSM(Sorting Smoothing Method) to estimate the real probability
 ```{r}
-PredClass = ifelse(train$PredLabel=="DEFAULT",1,0)
-train = data.frame(train,PredClass)
-train_ssm = train[order(PredTreeScore),]
-
+#1. order the valid data according to predictive probability
+valid_sort = valid[order(PredTreeScoreValid),]
+#2. use SSM formula to evaluate actural probability 'Pi', we choose n =50 according to the paper
+VALIDSIZE = dim(valid)[1]
+n = 50
+actural_p_valid = rep(0,VALIDSIZE)
+#pred_valid = valid_sort$PredTreeScoreValid
+pred_valid = valid_sort$PredLabelValid2
+pred_valid = prepend(pred_valid,rep(0,n),before=1)
+pred_valid = append(pred_valid,rep(0,n))
+for(i in 1:VALIDSIZE){
+  actural_p_valid[i] = sum(pred_valid[i:(i+2*n)])/(2*n+1)
+}
+valid_sort = data.frame(valid_sort,actural_p_valid)
+png("Scatter plot diagram of CTs.png")
+plot(valid_sort$PredTreeScoreValid,valid_sort$actural_p_valid,xlab="Predicted Probability",ylab="Actual probability")
+yy = valid_sort$actural_p_valid
+xx = valid_sort$PredTreeScoreValid
+actual_fit = lm(yy~xx)
+xx = seq(0,1:0.1)
+yy = predict(actual_fit,data.frame((xx)))
+lines(xx,yy)
+legend(0.03,0.9,legend=c("y = 1.449x - 0.19","R^2 = 0.7759"))
+dev.off()
 ```
 
 
----
-> a1 = sum(model_yy-base_yy)
-> a2 = sum(best_yy-base_yy)
-> a1/a2
-[1] 0.4937952
 
 
 
