@@ -1,0 +1,190 @@
+---
+title: "ClassificationTree"
+author: "Tianbo Qiu"
+date: "December 12, 2018"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+---
+title: "1211notes2"
+author: "Tianbo Qiu"
+date: "December 11, 2018"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## R Markdown
+
+```{r}
+data = read.csv("CreditDataRaw.csv",encoding="UTF-8")
+High = ifelse(data$default.payment.next.month==0,"NOT","DEFAULT")
+data = data.frame(data,High)
+set.seed(10)
+DATASIZE = dim(data)[1]
+train_index = sample(DATASIZE, DATASIZE*0.8)
+indicator = rep(0,DATASIZE)
+indicator[train_index] = 1 # 1:train 0:valid
+data = data.frame(data,indicator)
+
+```
+
+## Classification Tree
+```{r}
+library(tree)
+train = subset(data,data$indicator==1)
+valid = subset(data,data$indicator==0)
+
+ctt = tree(High~.-X.U.FEFF.ID-indicator-default.payment.next.month,train)
+#ctv = tree(High~.-X.U.FEFF.ID-indicator-default.payment.next.month,valid)
+
+```
+
+Prune Tree
+```{r}
+ctt = tree(High~.-X.U.FEFF.ID-indicator-default.payment.next.month,train,mindev=0.001)
+#cv_train = cv.tree(ctt,FUN=prune.misclass)
+#plot(cv_train$size,cv_train$dev,type='b')
+```
+
+### Plot tree
+```{r}
+plot(ctt)
+text(ctt)
+summary(ctt)
+ctt
+```
+
+```{r}
+PredLabel = predict(ctt,train,type="class")
+PredTreeScore = data.frame(predict(ctt,train,type="vector"))$DEFAULT
+train = data.frame(train,PredLabel,PredTreeScore)
+
+## valid
+PredLabelValid = predict(ctt,valid,type="class")
+PredTreeScoreValid = data.frame(predict(ctt,valid,type="vector"))$DEFAULT
+valid = data.frame(valid,PredLabelValid,PredTreeScoreValid)
+```
+
+validation set error rate: 0.183
+```{r}
+tablev = table(valid$PredLabelValid,valid$High)
+error_valid = 1 - sum(diag(tablev)) / sum(tablev)
+error_valid
+```
+gains
+```{r}
+library(gains)
+gtt = gains(actual=train$default.payment.next.month,predicted=train$PredTreeScore,optimal=TRUE)
+cpt_y = gtt$cume.pct.of.total
+cpt_x = gtt$depth
+#fit = lm(cpt_y~poly(cpt_x,3,raw=TRUE))
+#plot(cpt_x,cpt_y)
+#lines(cpt_x,predict(fit,data.frame(cpt_x)))
+
+#xx = 1:55
+#best_yy = xx / max(xx)
+#lines(xx,best_yy)
+
+## validation
+gtv = gains(actual=valid$default.payment.next.month,predicted=valid$PredTreeScoreValid,optimal=TRUE)
+cpv_y = gtv$cume.pct.of.total
+cpv_x = gtv$depth
+```
+
+```{r}
+library(rlang)
+gtt = gains(actual=train$default.payment.next.month,predicted=train$PredTreeScore,optimal=TRUE)
+cpt_y = gtt$cume.pct.of.total
+#cpt_y = prepend(cpt_y,0,before=1)
+cpt_x = gtt$depth
+#cpt_x = prepend(cpt_x,0,before=1)
+#fit = lm(cpt_y~poly(cpt_x,3,raw=TRUE))
+predicted = table(train$PredLabel)[1]
+xx = cpt_x / 100 * 24000
+yy = cpt_y * predicted
+plot(xx,yy)
+xx = prepend(xx,0,before=1)
+yy = prepend(yy,0,before=1)
+fit = lm(yy~poly(xx,3,raw=TRUE))
+xx = 0:24000
+model_yy = predict(fit,data.frame(xx))
+
+png("CT_lift_chart_train.png")
+plot(xx, model_yy, col="green",xlab="Number of total data", ylab="Cumulative number of target data")
+best_yy = rep(predicted,24001)
+for(i in 0:predicted){
+  best_yy[i+1] = i
+}
+lines(xx,best_yy,col="red",lwd=3)
+base_yy = predicted / 24000 * xx
+lines(xx,base_yy,col="blue")
+legend(17500,750, legend=c("best curve","model", "baseline"), col = c("red","green","blue"), lwd=c(1,1,1),cex=1)
+title("Lift chart of CT (training)")
+dev.off()
+library(geiger)
+#area1 = geiger:::.area.between.curves(xx,base_yy,yy)
+#area2 = geiger:::.area.between.curves(xx,best_yy,yy)
+#area1 / area2
+a1 = sum(model_yy-base_yy)
+a2 = sum(best_yy-base_yy)
+a1/a2
+```
+
+validation gains chart:
+```{r}
+library(rlang)
+gtv = gains(actual=valid$default.payment.next.month,predicted=valid$PredTreeScoreValid,optimal=TRUE)
+cpv_y = gtv$cume.pct.of.total
+cpv_x = gtv$depth
+predictedValid = table(valid$PredLabelValid)[1]
+
+xxv = cpv_x / 100 * 6000
+yyv = cpv_y * predictedValid
+#plot(xxv,yyv)
+xxv = prepend(xxv,0,before=1)
+yyv = prepend(yyv,0,before=1)
+fitv = lm(yyv~poly(xxv,3,raw=TRUE))
+xxv = 0:6000
+model_yyv = predict(fitv,data.frame(xxv))
+png("CT_lift_chart_valid.png")
+plot(xxv, model_yyv, col="green",xlab="Number of total data", ylab="Cumulative number of target data")
+best_yyv = rep(predictedValid,6001)
+for(i in 0:predictedValid){
+  best_yyv[i+1] = i
+}
+lines(xxv,best_yyv,col="red",lwd=3)
+base_yyv = predictedValid / 6000 * xxv
+lines(xxv,base_yyv,col="blue")
+legend(17500,750, legend=c("best curve","model", "baseline"), col = c("red","green","blue"), lwd=c(1,1,1),cex=1)
+title("Lift chart of CT (validation)")
+dev.off()
+library(geiger)
+#area1 = geiger:::.area.between.curves(xx,base_yy,yy)
+#area2 = geiger:::.area.between.curves(xx,best_yy,yy)
+#area1 / area2
+a1v = sum(model_yyv-base_yyv)
+a2v = sum(best_yyv-base_yyv)
+a1v/a2v
+```
+
+
+```{r}
+PredClass = ifelse(train$PredLabel=="DEFAULT",1,0)
+train = data.frame(train,PredClass)
+train_ssm = train[order(PredTreeScore),]
+
+```
+
+
+---
+> a1 = sum(model_yy-base_yy)
+> a2 = sum(best_yy-base_yy)
+> a1/a2
+[1] 0.4937952
