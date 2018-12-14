@@ -2,6 +2,7 @@
 
 Classification accuracy
 
+
 |Method  	               |Error rate  	|Error rate   |Area ratio   |Area ratio  |  	          
 |------------------------|--------------|-------------|-------------|------------|
 |  	                     |Training  	  |Validation  	|training  	  |Validation  |
@@ -11,3 +12,4 @@ Classification accuracy
 |Naive Bayesian  	       |            	|           	|           	|            |
 |Neural networks         |            	|            	|            	|            |
 |Classification Trees    |0.179    	    |0.185       	|0.494       	|0.456       |
+
