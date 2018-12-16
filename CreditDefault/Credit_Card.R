@@ -128,26 +128,26 @@ area_ratio_t
 #1. sort the train data according to predictive probability
 # train_sort = train[sort(knn_35_train), ]
 
-#2. use SSM formula to evaluate actural probability 'Pi', we choose n =50 according to the paper
+#2. use SSM formula to evaluate actual probability 'Pi', we choose n =50 according to the paper
 TRAINSIZE = dim(train)[1]
 n = 50
-actural_p_train = rep(0, TRAINSIZE)
+actual_p_train = rep(0, TRAINSIZE)
 pred_train = sort(knn_35_train)
 pred_train = prepend(pred_train, rep(0, n), before = 1)
 pred_train = append(pred_train, rep(0, n))
 
 for(i in 1 : TRAINSIZE){
-  actural_p_train[i] = sum(pred_train[i : (i + n)])/(2 * n + 1)
+  actual_p_train[i] = sum(pred_train[i : (i + n)])/(2 * n + 1)
 }
-train_sort = data.frame(sort(knn_35_train), actural_p_train)
+train_sort = data.frame(sort(knn_35_train), actual_p_train)
 
 
 # png("/Users/qinqingao/Desktop/Columbia/Courses/Fall 2018/EECS 6690/Project/figs/kNN_pred_acc_train.png")
-plot(sort(knn_35_train), train_sort$actural_p_train, 
+plot(sort(knn_35_train), train_sort$actual_p_train, 
 	xlab = "Predicted Probability", ylab = "Actual probability")
 
 xx = sort(knn_35_train)
-yy = train_sort$actural_p_train
+yy = train_sort$actual_p_train
 actual_fit = lm(yy ~ xx)
 
 yy = predict(actual_fit, data.frame(xx))
@@ -241,23 +241,23 @@ area_ratio_v
 
 TESTSIZE = dim(test)[1]
 n = 50
-actural_p_test = rep(0, TESTSIZE)
+actual_p_test = rep(0, TESTSIZE)
 pred_test = sort(knn_35_test)
 pred_test = prepend(pred_test, rep(0, n), before = 1)
 pred_test = append(pred_test, rep(0, n))
 
 for(i in 1 : TESTSIZE){
-  actural_p_test[i] = sum(pred_test[i : (i + n)])/(2 * n + 1)
+  actual_p_test[i] = sum(pred_test[i : (i + n)])/(2 * n + 1)
 }
-test_sort = data.frame(sort(knn_35_test), actural_p_test)
+test_sort = data.frame(sort(knn_35_test), actual_p_test)
 
 
 # png("/Users/qinqingao/Desktop/Columbia/Courses/Fall 2018/EECS 6690/Project/figs/kNN_pred_acc_test.png")
-plot(sort(knn_35_test), test_sort$actural_p_test, 
+plot(sort(knn_35_test), test_sort$actual_p_test, 
 	xlab = "Predicted Probability", ylab = "Actual probability")
 
 xx = sort(knn_35_test)
-yy = test_sort$actural_p_test
+yy = test_sort$actual_p_test
 actual_fit = lm(yy ~ xx)
 
 yy = predict(actual_fit, data.frame(xx))
@@ -361,30 +361,31 @@ area_ratio_lr_t
 
 TRAINSIZE = dim(train)[1]
 n = 50
-actural_p_train = rep(0, TRAINSIZE)
-train_results <- predict(lr, newdata = train, type = 'response')
+actual_p_train = rep(0, TRAINSIZE)
+train_results <- round(predict(lr, newdata = train, type = 'response'), 2)
 pred_train = sort(train_results)
 pred_train = prepend(pred_train, rep(0, n), before = 1)
 pred_train = append(pred_train, rep(0, n))
 
 for(i in 1 : TRAINSIZE){
-  actural_p_train[i] = sum(pred_train[i : (i + n)])/(2 * n + 1)
+  actual_p_train[i] = sum(pred_train[i : (i + n)])/(2 * n + 1)
 }
-train_sort = data.frame(sort(train_results), actural_p_train)
+train_sort = data.frame(sort(train_results), actual_p_train)
 
 
 # png("/Users/qinqingao/Desktop/Columbia/Courses/Fall 2018/EECS 6690/Project/figs/lr_pred_acc_train.png")
-plot(sort(train_results), train_sort$actural_p_train, 
+plot(sort(train_results), train_sort$actual_p_train, 
 	xlab = "Predicted Probability", ylab = "Actual probability")
 
 xx = sort(train_results)
-yy = train_sort$actural_p_train
+yy = train_sort$actual_p_train
 actual_fit = lm(yy ~ xx)
 
 yy = predict(actual_fit, data.frame(xx))
 lines(xx, yy)
+grid()
 summary(actual_fit)
-legend('bottomright', legend = c("y = 0.4989x + 0.00082", "R^2 = 0.9997"), cex = 1)
+legend('bottomright', legend = c("y = 0.4989x + 0.00083", "R^2 = 0.9995"), cex = 1)
 title("Predictive accuracy for Logistic Regression (training)")
 # dev.off()
 
@@ -471,31 +472,33 @@ area_ratio_lr_v
 
 TESTSIZE = dim(test)[1]
 n = 50
-actural_p_test = rep(0, TESTSIZE)
-test_results <- predict(lr, newdata = test, type = 'response')
+actual_p_test = rep(0, TESTSIZE)
+test_results <- round(predict(lr, newdata = test, type = 'response'), 2)
 pred_test = sort(test_results)
 pred_test = prepend(pred_test, rep(0, n), before = 1)
 pred_test = append(pred_test, rep(0, n))
 
 for(i in 1 : TESTSIZE){
-  actural_p_test[i] = sum(pred_test[i : (i + n)])/(2 * n + 1)
+  actual_p_test[i] = sum(pred_test[i : (i + n)])/(2 * n + 1)
 }
-test_sort = data.frame(sort(test_results), actural_p_test)
+test_sort = data.frame(sort(test_results), actual_p_test)
 
 
 # png("/Users/qinqingao/Desktop/Columbia/Courses/Fall 2018/EECS 6690/Project/figs/lr_pred_acc_test.png")
-plot(sort(test_results), test_sort$actural_p_test, 
+plot(sort(test_results), test_sort$actual_p_test, 
 	xlab = "Predicted Probability", ylab = "Actual probability")
 
 xx = sort(test_results)
-yy = test_sort$actural_p_test
+yy = test_sort$actual_p_test
 actual_fit = lm(yy ~ xx)
 
 yy = predict(actual_fit, data.frame(xx))
 lines(xx, yy)
+grid()
 summary(actual_fit)
-legend('bottomright', legend = c("y = 0.4856x + 0.002412", "R^2 = 0.998"), cex = 1)
+legend('bottomright', legend = c("y = 0.4855x + 0.002426", "R^2 = 0.9977"), cex = 1)
 title("Predictive accuracy for Logistic Regression (validation)")
+grid()
 # dev.off()
 
 
