@@ -273,15 +273,21 @@ title("Predictive accuracy for kNN (validation)")
 
 #################################
 
-#      logistic regression      # 
+#    2. logistic regression     # 
 
 #################################
 
 
+#########################
+
+#     2.1  LR Train     # 
+
+#########################
+
+#Part 2.1.1: train data with LR
 lr <- glm(default.payment.next.month ~ . , family = binomial(link = 'logit'), data = train)
 # summary(lr)
 # anova(lr, test = "Chisq")
-
 
 #train error
 train_results <- predict(lr, newdata = train, type = 'response')
@@ -291,16 +297,7 @@ train_misClasificError
 # [1] 0.1895833
 
 
-#test error
-test_results <- predict(lr, newdata = test, type = 'response')
-test_results <- ifelse(test_results > 0.5, 1, 0)
-misClasificError <- mean(test_results != test$default.payment.next.month)
-misClasificError
-# [1] 0.1863333
-
-
-
-#plot train lift curve for LR
+#Part 2.1.2: plot train lift curve for LR
 glr_t = gains(actual = train_label, predicted = as.numeric(train_results), groups = 2, optimal = TRUE)
 cpt_y_lr_t = glr_t$cume.pct.of.total
 cpt_y_lr_t
@@ -360,8 +357,56 @@ area_ratio_lr_t
 # [1] 0.9430203
 
 
+#Part 2.1.3: Use SSM(Sorting Smoothing Method) to estimate real probability
 
-#plot test lift curve for lg
+TRAINSIZE = dim(train)[1]
+n = 50
+actural_p_train = rep(0, TRAINSIZE)
+train_results <- predict(lr, newdata = train, type = 'response')
+pred_train = sort(train_results)
+pred_train = prepend(pred_train, rep(0, n), before = 1)
+pred_train = append(pred_train, rep(0, n))
+
+for(i in 1 : TRAINSIZE){
+  actural_p_train[i] = sum(pred_train[i : (i + n)])/(2 * n + 1)
+}
+train_sort = data.frame(sort(train_results), actural_p_train)
+
+
+# png("/Users/qinqingao/Desktop/Columbia/Courses/Fall 2018/EECS 6690/Project/figs/lr_pred_acc_train.png")
+plot(sort(train_results), train_sort$actural_p_train, 
+	xlab = "Predicted Probability", ylab = "Actual probability")
+
+xx = sort(train_results)
+yy = train_sort$actural_p_train
+actual_fit = lm(yy ~ xx)
+
+yy = predict(actual_fit, data.frame(xx))
+lines(xx, yy)
+summary(actual_fit)
+legend('bottomright', legend = c("y = 0.4989x + 0.00082", "R^2 = 0.9997"), cex = 1)
+title("Predictive accuracy for Logistic Regression (training)")
+# dev.off()
+
+
+
+#########################
+
+#      2.2  LR Test     # 
+
+#########################
+
+
+#Part 2.2.1: test data with LR
+#test error
+test_results <- predict(lr, newdata = test, type = 'response')
+test_results <- ifelse(test_results > 0.5, 1, 0)
+misClasificError <- mean(test_results != test$default.payment.next.month)
+misClasificError
+# [1] 0.1863333
+
+
+#Part 2.2.2: plot train lift curve for LR
 glr_v = gains(actual = test_label, predicted = as.numeric(test_results), groups = 2, optimal = TRUE)
 cpt_y_lr_v = glr_v$cume.pct.of.total
 cpt_y_lr_v
@@ -419,6 +464,39 @@ a2_lr_v = sum(best_yy_lr_v - base_yy_lr_v)
 area_ratio_lr_v <- a1_lr_v/a2_lr_v
 area_ratio_lr_v
 # [1] 0.9601554
+
+
+
+#Part 2.2.3: Use SSM(Sorting Smoothing Method) to estimate real probability
+
+TESTSIZE = dim(test)[1]
+n = 50
+actural_p_test = rep(0, TESTSIZE)
+test_results <- predict(lr, newdata = test, type = 'response')
+pred_test = sort(test_results)
+pred_test = prepend(pred_test, rep(0, n), before = 1)
+pred_test = append(pred_test, rep(0, n))
+
+for(i in 1 : TESTSIZE){
+  actural_p_test[i] = sum(pred_test[i : (i + n)])/(2 * n + 1)
+}
+test_sort = data.frame(sort(test_results), actural_p_test)
+
+
+# png("/Users/qinqingao/Desktop/Columbia/Courses/Fall 2018/EECS 6690/Project/figs/lr_pred_acc_test.png")
+plot(sort(test_results), test_sort$actural_p_test, 
+	xlab = "Predicted Probability", ylab = "Actual probability")
+
+xx = sort(test_results)
+yy = test_sort$actural_p_test
+actual_fit = lm(yy ~ xx)
+
+yy = predict(actual_fit, data.frame(xx))
+lines(xx, yy)
+summary(actual_fit)
+legend('bottomright', legend = c("y = 0.4856x + 0.002412", "R^2 = 0.998"), cex = 1)
+title("Predictive accuracy for Logistic Regression (validation)")
+# dev.off()
 
 
 
