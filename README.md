@@ -1,4 +1,4 @@
-# Table 1: Error rate, Area Ratio
+### Table 1: Error rate, Area Ratio
 
 
 |Method  	               |Error rate  	|Error rate   |Area ratio   |Area ratio  |  	          
@@ -15,7 +15,7 @@
 
 
 
-# Table 2: Coeffecients, R2
+### Table 2: Coeffecients, R2
 
 
 |Method  	               |Reg Coeff   	|Reg Intercept|R2           |  	          
