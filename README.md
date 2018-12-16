@@ -4,7 +4,7 @@
 |Method  	               |Error rate  	|Error rate   |Area ratio   |Area ratio  |  	          
 |------------------------|--------------|-------------|-------------|------------|
 |  	                     |Training  	  |Validation  	|training  	  |Validation  |
-|K-nearest neighbor  	   |0.216         |0.215        |0.494       	|0.502       |
+|K-nearest neighbor  	   |0.189         |0.193        |0.494       	|0.502       |
 |Logistic regression     |0.190        	|0.186      	|           	|            |
 |Discriminant analysis   |            	|            	|            	|            |
 |Naive Bayesian  	       |            	|           	|           	|            |
