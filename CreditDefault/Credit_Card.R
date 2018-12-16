@@ -1,6 +1,11 @@
 ## EECS 6690 Project
 ## Credit Card
 
+library(class)
+library(caret)
+library(gains)
+library(rlang)
+library(geiger)
 
 #import data
 setwd('/Users/qinqingao/Desktop/Columbia/Courses/Fall 2018/EECS 6690/Project')
@@ -21,12 +26,21 @@ train_label <- train[, ncol(train)]
 test_label <- test[, ncol(test)]
 
 
-###### knn ###### 
+#################################
 
-#train data with knn
-library(class)
+#            1. kNN             # 
+
+#################################
 
 
+#########################
+
+#    1.1  kNN Train     # 
+
+#########################
+
+
+#Part 1.1.1: train data with kNN
 #train error
 knn_35_train <- knn(train = train, test = train, cl = train_label, k = 35)
 ACC_35_train <- sum(train_label == knn_35_train)/NROW(train_label)
@@ -35,17 +49,8 @@ Err_train
 # [1] 0.215875
 
 
-#test error
-knn_35_test <- knn(train = train, test = test, cl = train_label, k = 35)
-ACC_35_test <- sum(test_label == knn_35_test)/NROW(test_label)
-Err_test <- 1 - ACC_35_test
-Err_test
-# [1] 0.2156667
-
-
-library(caret)
 confusionMatrix(table(knn_35_train, train_label))
-confusionMatrix(table(knn_35_test, test_label))
+
 
 
 #select optimal k
@@ -61,11 +66,8 @@ confusionMatrix(table(knn_35_test, test_label))
 # plot(k_optm, type = "b", xlab = "K-Value", ylab = "Accuracy level")
 
 
-library(gains)
-library(rlang)
-library(geiger)
 
-#plot train lift curve for kNN
+#Part 1.1.2: plot train lift curve for kNN
 gknn_t = gains(actual = train_label, predicted = as.numeric(knn_35_train), groups = 2, optimal = TRUE)
 cpt_y_t = gknn_t$cume.pct.of.total
 cpt_y_t
@@ -89,7 +91,7 @@ xx_t = 0 : 24000
 model_yy_t = predict(fit_t, data.frame(xx_t))
 
 
-png("/Users/qinqingao/Desktop/Columbia/Courses/Fall 2018/EECS 6690/Project/figs/kNN_lift_chart_train.png")
+# png("/Users/qinqingao/Desktop/Columbia/Courses/Fall 2018/EECS 6690/Project/figs/kNN_lift_chart_train.png")
 plot(xx_t, model_yy_t, col = "green", xlab = "Number of total data", ylab = "Cumulative number of target data", type = 'l', lwd = 3, ylim = c(0, 1000))
 
 best_yy_t = rep(predicted_d_t, 24001)
@@ -110,7 +112,7 @@ grid(nx = NA, ny = NULL)
 legend('bottomright', legend = c("best curve", "model", "baseline"), col = c("red","green","blue"), 
 	cex = 1, lwd = 2)
 title("Lift chart of kNN (training)")
-dev.off()
+# dev.off()
 
 
 # calculate area ratio
@@ -121,8 +123,61 @@ area_ratio_t
 # [1] 0.4948719
 
 
+#Part 1.1.3: Use SSM(Sorting Smoothing Method) to estimate real probability
 
-#plot test lift curve for kNN
+#1. sort the train data according to predictive probability
+# train_sort = train[sort(knn_35_train), ]
+
+#2. use SSM formula to evaluate actural probability 'Pi', we choose n =50 according to the paper
+TRAINSIZE = dim(train)[1]
+n = 50
+actural_p_train = rep(0, TRAINSIZE)
+pred_train = sort(knn_35_train)
+pred_train = prepend(pred_train, rep(0, n), before = 1)
+pred_train = append(pred_train, rep(0, n))
+
+for(i in 1 : TRAINSIZE){
+  actural_p_train[i] = sum(pred_train[i : (i + n)])/(2 * n + 1)
+}
+train_sort = data.frame(sort(knn_35_train), actural_p_train)
+
+
+# png("/Users/qinqingao/Desktop/Columbia/Courses/Fall 2018/EECS 6690/Project/figs/kNN_pred_acc_train.png")
+plot(sort(knn_35_train), train_sort$actural_p_train, 
+	xlab = "Predicted Probability", ylab = "Actual probability")
+
+xx = sort(knn_35_train)
+yy = train_sort$actural_p_train
+actual_fit = lm(yy ~ xx)
+
+yy = predict(actual_fit, data.frame(xx))
+lines(xx, yy)
+summary(actual_fit)
+legend('bottomright', legend = c("y = 0.491x + 0.5044", "R^2 = 0.961"), cex = 1)
+title("Predictive accuracy for kNN (training)")
+# dev.off()
+
+
+
+
+#########################
+
+#      1.2 kNN Test     # 
+
+#########################
+
+
+#Part 1.2.1: test data with kNN
+knn_35_test <- knn(train = train, test = test, cl = train_label, k = 35)
+ACC_35_test <- sum(test_label == knn_35_test)/NROW(test_label)
+Err_test <- 1 - ACC_35_test
+Err_test
+# [1] 0.2156667
+
+confusionMatrix(table(knn_35_test, test_label))
+
+
+#Part 1.2.2: plot test lift curve for kNN
 gknn_v = gains(actual = test_label, predicted = as.numeric(knn_35_test), groups = 2, optimal = TRUE)
 cpt_y_v = gknn_v$cume.pct.of.total
 cpt_y_v
@@ -134,6 +189,9 @@ cpt_x_v
 
 
 predicted_d_v = table(knn_35_test)[2]
+predicted_d_v
+#   1 
+# 228 
 xx_v = cpt_x_v / 100 * 6000
 yy_v = cpt_y_v * as.numeric(predicted_d_v)
 plot(xx_v, yy_v)
@@ -146,7 +204,7 @@ xx_v = 0 : 6000
 model_yy_v = predict(fit_v, data.frame(xx_v))
 
 
-png("/Users/qinqingao/Desktop/Columbia/Courses/Fall 2018/EECS 6690/Project/figs/kNN_lift_chart_test.png")
+# png("/Users/qinqingao/Desktop/Columbia/Courses/Fall 2018/EECS 6690/Project/figs/kNN_lift_chart_test.png")
 plot(xx_v, model_yy_v, col = "green", xlab = "Number of total data", ylab = "Cumulative number of target data", 
 	type = 'l', lwd = 3, ylim = c(0, 250))
 
@@ -168,7 +226,7 @@ grid(nx = NA, ny = NULL)
 legend('bottomright', legend = c("best curve", "model", "baseline"), col = c("red","green","blue"), 
 	cex = 1, lwd = 2)
 title("Lift chart of kNN (validation)")
-dev.off()
+# dev.off()
 
 
 # calculate area ratio
@@ -177,6 +235,39 @@ a2_v = sum(best_yy_v - base_yy_v)
 area_ratio_v <- a1_v/a2_v
 area_ratio_v
 # [1] 0.5022661
+
+
+#Part 1.2.3: Use SSM(Sorting Smoothing Method) to estimate real probability
+
+TESTSIZE = dim(test)[1]
+n = 50
+actural_p_test = rep(0, TESTSIZE)
+pred_test = sort(knn_35_test)
+pred_test = prepend(pred_test, rep(0, n), before = 1)
+pred_test = append(pred_test, rep(0, n))
+
+for(i in 1 : TESTSIZE){
+  actural_p_test[i] = sum(pred_test[i : (i + n)])/(2 * n + 1)
+}
+test_sort = data.frame(sort(knn_35_test), actural_p_test)
+
+
+# png("/Users/qinqingao/Desktop/Columbia/Courses/Fall 2018/EECS 6690/Project/figs/kNN_pred_acc_test.png")
+plot(sort(knn_35_test), test_sort$actural_p_test, 
+	xlab = "Predicted Probability", ylab = "Actual probability")
+
+xx = sort(knn_35_test)
+yy = test_sort$actural_p_test
+actual_fit = lm(yy ~ xx)
+
+yy = predict(actual_fit, data.frame(xx))
+lines(xx, yy)
+summary(actual_fit)
+legend('bottomright', legend = c("y = 0.4518x + 0.5028", "R^2 = 0.854"), cex = 1)
+title("Predictive accuracy for kNN (validation)")
+# dev.off()
+
+
 
 
 
@@ -236,7 +327,7 @@ xx_lr_t = 0 : 24000
 model_yy_lr_t = predict(fit_lr_t, data.frame(xx_lr_t))
 
 
-png("/Users/qinqingao/Desktop/Columbia/Courses/Fall 2018/EECS 6690/Project/figs/lr_lift_chart_train.png")
+# png("/Users/qinqingao/Desktop/Columbia/Courses/Fall 2018/EECS 6690/Project/figs/lr_lift_chart_train.png")
 plot(xx_lr_t, model_yy_lr_t, col = "green", xlab = "Number of total data", ylab = "Cumulative number of target data", 
 	type = 'l', lwd = 3, ylim = c(0, 3000))
 
@@ -258,7 +349,7 @@ grid(nx = NA, ny = NULL)
 legend('bottomright', legend = c("best curve", "model", "baseline"), col = c("red","green","blue"), 
 	cex = 1, lwd = 2)
 title("Lift chart of Logistic Regression (training)")
-dev.off()
+# dev.off()
 
 
 # calculate area ratio
@@ -297,7 +388,7 @@ xx_lr_v = 0 : 6000
 model_yy_lr_v = predict(fit_lr_v, data.frame(xx_lr_v))
 
 
-png("/Users/qinqingao/Desktop/Columbia/Courses/Fall 2018/EECS 6690/Project/figs/lr_lift_chart_test.png")
+# png("/Users/qinqingao/Desktop/Columbia/Courses/Fall 2018/EECS 6690/Project/figs/lr_lift_chart_test.png")
 plot(xx_lr_v, model_yy_lr_v, col = "green", xlab = "Number of total data", ylab = "Cumulative number of target data", 
 	type = 'l', lwd = 3, ylim = c(0, 600))
 
@@ -319,7 +410,7 @@ grid(nx = NA, ny = NULL)
 legend('bottomright', legend = c("best curve", "model", "baseline"), col = c("red","green","blue"), 
 	cex = 1, lwd = 2)
 title("Lift chart of Logistic Regression (validation)")
-dev.off()
+# dev.off()
 
 
 # calculate area ratio
