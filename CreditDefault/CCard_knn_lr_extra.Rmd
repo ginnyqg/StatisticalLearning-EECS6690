@@ -521,7 +521,17 @@ legend(0.03,0.9,legend=c("y = 0.975379x - 0.132412","R^2 = 0.4808"))
 #     3.1  AB Train     # 
 
 #########################
+scale01 <- function(x){
+     (x - min(x)) / (max(x) - min(x))
+ }
 
+train_norm = train
+
+for(name in names(train)){
+     if(name != "default.payment.next.month"){
+         train_norm[name] <- scale01(train_norm[name])
+     }     
+ }
 
 #Part 3.1.1: train data with AB
 # library(fastAdaboost)
