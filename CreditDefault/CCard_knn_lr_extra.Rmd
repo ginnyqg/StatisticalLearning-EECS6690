@@ -1,0 +1,764 @@
+---
+title: E6690 Project
+date: Dec 17, 2018
+output:
+  pdf_document: default
+  html_document: default
+---
+
+```{r}
+library(knitr)
+opts_chunk$set(tidy.opts = list(width.cutoff = 60), tidy = TRUE)
+```
+
+## 0. Import libraries and data
+
+```{r}
+library(class)
+library(caret)
+library(gains)
+library(rlang)
+library(geiger)
+library(corrplot)
+library(adabag)
+
+setwd('/Users/qinqingao/Desktop/Columbia/Courses/Fall 2018/EECS 6690/Project')
+require(gdata)
+raw <- read.xls ("default of credit card clients.xls", sheet = 1, skip = 1, row.names = 1)
+dim(raw)
+# [1] 30000    24
+```
+
+
+
+## 1. Exploratory Data Analysis with correlation plot
+
+```{r}
+# png("/Users/qinqingao/Desktop/Columbia/Courses/Fall 2018/EECS 6690/Project/figs/corr_plot.png")
+corrplot(cor(raw), order = "AOE", tl.cex = 0.5)
+mtext('Correlation of Features for Credit Card Default', at = 12, line = -1, cex = 1.5)
+# dev.off()
+```
+
+
+
+## 2. Train, test split, prepare for model training
+
+```{r}
+#train-test split, 80%-20%
+set.seed(2018)
+sample_row_num <- sample(nrow(raw), nrow(raw) * 0.8)
+
+train <- raw[sample_row_num, ]
+test <- raw[-sample_row_num, ]  
+ 
+train_label <- train[, ncol(train)]
+test_label <- test[, ncol(test)]
+```
+
+
+## 3. Feature engineering with variable normalization
+
+```{r}
+#normalizing numerical variables
+scale01 <- function(x){
+     (x - min(x)) / (max(x) - min(x))
+ }
+
+train_norm = train
+valid_norm = test
+
+for(name in names(train)){
+     if(name != "default.payment.next.month"){
+         train_norm[name] <- scale01(train_norm[name])
+         valid_norm[name] <- scale01(valid_norm[name])
+     }     
+ }
+```
+ 
+
+
+
+## 4. Modeling and analysis with kNN
+
+```{r}
+#################################
+
+#            1. kNN             # 
+
+#################################
+
+#########################
+
+#    1.1  kNN Train     # 
+
+#########################
+
+#Part 1.1.1: train data with kNN
+train_knn = train_norm
+train_knn$default.payment.next.month <- NULL
+knnt = knn(train_knn,train_knn,train$default.payment.next.month,k=100,prob = TRUE)
+tt = table(pred = knnt, actual = train$default.payment.next.month)
+error_train = 1 - sum(diag(tt)) / sum(tt)
+error_train
+# [1] 0.1899583
+
+
+#Lift chart for train - knn
+PredKNNLabel = data.frame(knnt)
+names(PredKNNLabel) <- "PredKNNLabel"
+PredKNNScore = attr(knnt, "prob") # its the propotion of the wining class
+
+# convert it into the probablity of default
+for (i in 1:length(PredKNNScore)){
+  if (knnt[i] == 0){
+    PredKNNScore[i] = 1 - PredKNNScore[i]
+  }
+}
+PredKNNScore = data.frame(PredKNNScore)
+names(PredKNNScore) <- "PredKNNScore"
+train_norm = data.frame(train_norm,PredKNNLabel, PredKNNScore)
+
+
+
+#Part 1.1.2: plot train lift curve for kNN
+gtt = gains(actual=train_norm$default.payment.next.month, predicted=train_norm$PredKNNScore,optimal=TRUE)
+cpt_y = gtt$cume.pct.of.total
+cpt_x = gtt$depth
+
+predicted = table(train_norm$PredKNNLabel)[2]
+xx = cpt_x / 100 * 24000
+yy = cpt_y * predicted
+#plot(xx,yy)
+xx = prepend(xx,0,before=1)
+yy = prepend(yy,0,before=1)
+fit = lm(yy~poly(xx,3,raw=TRUE))
+xx = 0:24000
+model_yy = predict(fit,data.frame(xx))
+
+# png("KNN_lift_chart_train.png")
+plot(xx, model_yy, col="green",xlab="Number of total data", ylab="Cumulative number of target data",
+	type = 'l', lwd = 3)
+
+best_yy = rep(predicted,24001)
+for(i in 0:predicted){
+  best_yy[i+1] = i
+}
+
+lines(xx,best_yy,col="red",lwd=2)
+
+base_yy = predicted / 24000 * xx
+lines(xx,base_yy,col="blue", lwd = 2)
+
+legend('bottomright', legend=c("best curve","model", "baseline"), col = c("red","green","blue"), lwd=c(1,1,1),cex=1)
+title("Lift chart of KNN (training)")
+# dev.off()
+
+
+#Calculate area ratio
+a1t = sum(model_yy-base_yy)
+a2t = sum(best_yy-base_yy)
+a1t/a2t
+# [1] 0.4627081
+
+
+
+#########################
+
+#    1.2  kNN Test     # 
+
+#########################
+
+
+#Part 1.2.1: test data with kNN
+valid_knn = valid_norm
+valid_knn$default.payment.next.month <- NULL
+knnv = knn(train_knn,valid_knn,train$default.payment.next.month,k=100,prob = TRUE)
+
+tv = table(pred = knnv, actual = test$default.payment.next.month)
+error_valid = 1 - sum(diag(tv)) / sum(tv)
+error_valid
+# [1] 0.1938333
+
+
+PredKNNLabelV = data.frame(knnv)
+names(PredKNNLabelV) <- "PredKNNLabelV"
+PredKNNScoreV = attr(knnv, "prob") # its the propotion of the wining class
+
+# convert it into the probablity of default
+for (i in 1:length(PredKNNScoreV)){
+  if (knnv[i] == 0){
+    PredKNNScoreV[i] = 1 - PredKNNScoreV[i]
+  }
+}
+PredKNNScoreV = data.frame(PredKNNScoreV)
+names(PredKNNScoreV) <- "PredKNNScoreV"
+valid_norm = data.frame(valid_norm,PredKNNLabelV, PredKNNScoreV)
+
+
+
+#Part 1.2.3: plot test lift curve for kNN
+gtv = gains(actual=valid_norm$default.payment.next.month, predicted=valid_norm$PredKNNScoreV,optimal=TRUE)
+cpv_y = gtv$cume.pct.of.total
+cpv_x = gtv$depth
+
+predictedV = table(valid_norm$PredKNNLabelV)[2]
+xxv = cpv_x / 100 * 6000
+yyv = cpv_y * predictedV
+
+xxv = prepend(xxv, 0, before=1)
+yyv = prepend(yyv, 0, before=1)
+fitv = lm(yyv ~ poly(xxv, 3, raw=TRUE))
+xxv = 0:6000
+model_yyv = predict(fitv, data.frame(xxv))
+
+# png("KNN_lift_chart_train.png")
+plot(xxv, model_yyv, col="green",xlab="Number of total data", ylab="Cumulative number of target data",
+	type = 'l', lwd = 3)
+
+best_yyv = rep(predictedV, 6001)
+for(i in 0:predictedV){
+  best_yyv[i+1] = i
+}
+
+lines(xxv,best_yyv,col="red",lwd=2)
+
+base_yyv = predictedV / 6000 * xxv
+lines(xxv, base_yyv, col="blue", lwd = 2)
+
+legend('bottomright', legend=c("best curve","model", "baseline"), col = c("red","green","blue"), lwd=c(1,1,1),cex=1)
+title("Lift chart of KNN (validation)")
+# dev.off()
+
+#Calculate area ratio
+a1v = sum(model_yyv - base_yyv)
+a2v = sum(best_yyv - base_yyv)
+a1v/a2v
+# [1] 0.408529
+
+
+
+#Part 1.1.3: Use SSM(Sorting Smoothing Method) to estimate real probability
+
+#1. order the valid data according to predictive probability
+valid_norm_sort = valid_norm[order(PredKNNScoreV),]
+#2. use SSM formula to evaluate actural probability 'Pi', we choose n =50 according to the paper
+VALIDSIZE = dim(valid_norm)[1]
+n = 50
+actural_p_valid = rep(0,VALIDSIZE)
+#pred_valid = valid_sort$PredTreeScoreValid
+pred_valid = round(valid_norm_sort$PredKNNScoreV)
+pred_valid = prepend(pred_valid,rep(0,n),before=1)
+pred_valid = append(pred_valid,rep(0,n))
+for(i in 1:VALIDSIZE){
+  actural_p_valid[i] = sum(pred_valid[i:(i+2*n)])/(2*n+1)
+}
+valid_norm_sort = data.frame(valid_norm_sort,actural_p_valid)
+
+
+# png("Scatter plot diagram of KNN.png")
+plot(valid_norm_sort$PredKNNScoreV,valid_norm_sort$actural_p_valid,xlab="Predicted Probability",ylab="Actual probability")
+
+yy = valid_norm_sort$actural_p_valid
+xx = valid_norm_sort$PredKNNScoreV
+actual_fit = lm(yy~xx)
+
+xx = seq(0,1:0.1)
+yy = predict(actual_fit,data.frame((xx)))
+lines(xx,yy)
+
+summary(actual_fit)
+legend(0.03,0.9,legend=c("y = 1.385x - 0.18","R^2 = 0.7089"))
+# dev.off()
+```
+
+
+
+## 5. Modeling and analysis with Logistic Regression
+
+```{r}
+#################################
+
+#    2. logistic regression     # 
+
+#################################
+
+
+#########################
+
+#     2.1  LR Train     # 
+
+#########################
+
+
+#Part 2.1.1: train data with LR
+lr <- glm(default.payment.next.month ~ . , family = binomial(link = 'logit'), data = train)
+# summary(lr)
+
+#check p value, and eliminate the ones have high pvalue
+
+# Call:
+# glm(formula = default.payment.next.month ~ ., family = binomial(link = "logit"), 
+#     data = train)
+
+# Deviance Residuals: 
+#     Min       1Q   Median       3Q      Max  
+# -3.1541  -0.7014  -0.5465  -0.2910   3.9405  
+
+# Coefficients:
+#               Estimate Std. Error z value Pr(>|z|)    
+# (Intercept) -7.533e-01  1.324e-01  -5.689 1.28e-08 ***
+# LIMIT_BAL   -8.199e-07  1.753e-07  -4.677 2.91e-06 ***
+# SEX         -1.150e-01  3.430e-02  -3.353 0.000799 ***
+# EDUCATION   -1.005e-01  2.352e-02  -4.272 1.94e-05 ***
+# MARRIAGE    -1.360e-01  3.537e-02  -3.844 0.000121 ***
+# AGE          9.154e-03  1.976e-03   4.634 3.59e-06 ***
+# PAY_0        5.749e-01  1.968e-02  29.218  < 2e-16 ***
+# PAY_2        8.570e-02  2.253e-02   3.805 0.000142 ***
+# PAY_3        5.946e-02  2.538e-02   2.342 0.019156 *  
+# PAY_4        2.151e-02  2.821e-02   0.763 0.445693    
+# PAY_5        4.622e-02  3.011e-02   1.535 0.124742    
+# PAY_6        5.466e-03  2.479e-02   0.220 0.825497    
+# BILL_AMT1   -5.568e-06  1.285e-06  -4.334 1.47e-05 ***
+# BILL_AMT2    1.884e-06  1.689e-06   1.115 0.264799    
+# BILL_AMT3    1.558e-06  1.481e-06   1.052 0.292782    
+# BILL_AMT4    7.592e-07  1.528e-06   0.497 0.619230    
+# BILL_AMT5   -8.107e-07  1.788e-06  -0.453 0.650287    
+# BILL_AMT6    1.252e-06  1.406e-06   0.890 0.373233    
+# PAY_AMT1    -1.310e-05  2.569e-06  -5.099 3.41e-07 ***
+# PAY_AMT2    -8.017e-06  2.180e-06  -3.678 0.000235 ***
+# PAY_AMT3    -3.175e-06  1.946e-06  -1.632 0.102756    
+# PAY_AMT4    -5.093e-06  2.186e-06  -2.330 0.019814 *  
+# PAY_AMT5    -4.207e-06  2.045e-06  -2.057 0.039649 *  
+# PAY_AMT6    -2.301e-06  1.469e-06  -1.567 0.117105    
+# ---
+# Signif. codes:  0 ‘***’ 0.001 ‘**’ 0.01 ‘*’ 0.05 ‘.’ 0.1 ‘ ’ 1
+
+# (Dispersion parameter for binomial family taken to be 1)
+
+#     Null deviance: 25390  on 23999  degrees of freedom
+# Residual deviance: 22336  on 23976  degrees of freedom
+# AIC: 22384
+
+# Number of Fisher Scoring iterations: 6
+
+
+names = names(train)
+f2 <- as.formula(paste("default.payment.next.month ~", 
+	paste(names[!names %in% c("PAY_AMT6", "PAY_AMT3", "BILL_AMT6", "BILL_AMT5", "BILL_AMT4", "BILL_AMT3", "BILL_AMT2", "PAY_6", "PAY_5", "PAY_4")], collapse = " + ")))
+lr2 = glm(f2, data=train_norm, family = binomial(link = 'logit'))
+# summary(lr2)
+
+
+pred = predict(lr2, train_norm, type = "response")
+PredLabel = data.frame(round(pred))
+names(PredLabel) <- "PredLabel"
+
+PredScore = data.frame(pred)
+names(PredScore) <- "PredScore"
+
+train_norm = data.frame(train_norm, PredLabel, PredScore)
+tt = table(pred = train_norm$PredLabel, actual = train_norm$default.payment.next.month)
+error_train = 1 - sum(diag(tt)) / sum(tt)
+error_train
+# [1] 0.191625
+
+
+
+#Part 2.1.2: plot train lift curve for LR
+gtt = gains(actual=train_norm$default.payment.next.month, predicted=train_norm$PredScore,optimal=TRUE)
+cpt_y = gtt$cume.pct.of.total
+cpt_x = gtt$depth
+
+predicted = table(train_norm$PredLabel)[2]
+xx = cpt_x / 100 * 24000
+yy = cpt_y * predicted
+#plot(xx,yy)
+xx = prepend(xx,0,before=1)
+yy = prepend(yy,0,before=1)
+fit = lm(yy~poly(xx,3,raw=TRUE))
+xx = 0:24000
+model_yy = predict(fit,data.frame(xx))
+
+# png("LR_lift_chart_train.png")
+plot(xx, model_yy, col="green",xlab="Number of total data", ylab="Cumulative number of target data",
+	type = 'l', lwd = 3)
+
+best_yy = rep(predicted,24001)
+for(i in 0:predicted){
+  best_yy[i+1] = i
+}
+
+lines(xx,best_yy,col="red",lwd=2)
+
+base_yy = predicted / 24000 * xx
+lines(xx,base_yy,col="blue", lwd = 2)
+
+legend('bottomright', legend=c("best curve","model", "baseline"), col = c("red","green","blue"), lwd=c(1,1,1),cex=1)
+title("Lift chart of Logistic Regression (training)")
+# dev.off()
+
+
+#Calculate area ratio
+a1t = sum(model_yy-base_yy)
+a2t = sum(best_yy-base_yy)
+a1t/a2t
+# [1] 0.3661037
+
+
+
+#########################
+
+#     2.2  LR Test      # 
+
+#########################
+
+
+#Part 2.2.1: test data with LR
+predV = predict(lr2, valid_norm, type = "response")
+PredLabelV = data.frame(round(predV))
+names(PredLabelV) <- "PredLabelV"
+
+PredScoreV = data.frame(predV)
+names(PredScoreV) <- "PredScoreV"
+
+valid_norm = data.frame(valid_norm, PredLabelV, PredScoreV)
+tv = table(pred = valid_norm$PredLabelV, actual = valid_norm$default.payment.next.month)
+error_valid = 1 - sum(diag(tv)) / sum(tv)
+error_valid
+# [1] 0.195
+
+
+
+#Part 2.2.2: plot test lift curve for LR
+gtv = gains(actual=valid_norm$default.payment.next.month, predicted=valid_norm$PredScoreV,optimal=TRUE)
+cpv_y = gtv$cume.pct.of.total
+cpv_x = gtv$depth
+
+predictedV = table(valid_norm$PredLabelV)[2]
+xxv = cpv_x / 100 * 6000
+yyv = cpv_y * predictedV
+
+xxv = prepend(xxv, 0, before=1)
+yyv = prepend(yyv, 0, before=1)
+fitv = lm(yyv ~ poly(xxv, 3, raw=TRUE))
+xxv = 0:6000
+model_yyv = predict(fitv, data.frame(xxv))
+
+# png("KNN_lift_chart_train.png")
+plot(xxv, model_yyv, col="green",xlab="Number of total data", ylab="Cumulative number of target data",
+	type = 'l', lwd = 3)
+
+best_yyv = rep(predictedV, 6001)
+for(i in 0:predictedV){
+  best_yyv[i+1] = i
+}
+
+lines(xxv,best_yyv,col="red",lwd=2)
+
+base_yyv = predictedV / 6000 * xxv
+lines(xxv, base_yyv, col="blue", lwd = 2)
+
+legend('bottomright', legend=c("best curve","model", "baseline"), col = c("red","green","blue"), lwd=c(1,1,1),cex=1)
+title("Lift chart of Logistic Regression (validation)")
+# dev.off()
+
+#Calculate area ratio
+a1v = sum(model_yyv - base_yyv)
+a2v = sum(best_yyv - base_yyv)
+a1v/a2v
+# [1] 0.3624596
+
+
+
+#Part 2.2.3: Use SSM(Sorting Smoothing Method) to estimate real probability
+
+#1. order the valid data according to predictive probability
+valid_norm_sort = valid_norm[order(PredScoreV),]
+#2. use SSM formula to evaluate actural probability 'Pi', we choose n =50 according to the paper
+VALIDSIZE = dim(valid_norm)[1]
+n = 50
+actural_p_valid = rep(0,VALIDSIZE)
+pred_valid = round(valid_norm_sort$PredScoreV)
+pred_valid = prepend(pred_valid,rep(0,n),before=1)
+pred_valid = append(pred_valid,rep(0,n))
+for(i in 1:VALIDSIZE){
+  actural_p_valid[i] = sum(pred_valid[i:(i+2*n)])/(2*n+1)
+}
+valid_norm_sort = data.frame(valid_norm_sort,actural_p_valid)
+
+
+# png("Scatter plot diagram of KNN.png")
+plot(valid_norm_sort$PredScoreV,valid_norm_sort$actural_p_valid,xlab="Predicted Probability",ylab="Actual probability")
+
+yy = valid_norm_sort$actural_p_valid
+xx = valid_norm_sort$PredScoreV
+actual_fit = lm(yy~xx)
+
+xx = seq(0,1:0.1)
+yy = predict(actual_fit,data.frame((xx)))
+lines(xx,yy)
+
+summary(actual_fit)
+legend(0.03,0.9,legend=c("y = 0.975379x - 0.132412","R^2 = 0.4808"))
+# dev.off()
+```
+
+
+
+## 6. Modeling and analysis with AdaBoost
+
+```{r}
+#################################
+
+#    3. AdaBoost     # 
+
+#################################
+
+
+#########################
+
+#   3.1  ABoost Train   # 
+
+#########################
+
+
+#Part 3.1.1: train data with AB
+# library(fastAdaboost)
+# ab <- adaboost(default.payment.next.month ~ ., data = train, 10)
+# summary(ab)
+
+# pred = predict(ab, train_norm, type = "response")
+# PredLabel = data.frame(round(pred))
+# names(PredLabel) <- "PredLabel"
+
+# PredScore = data.frame(pred)
+# names(PredScore) <- "PredScore"
+
+# train_norm = data.frame(train_norm, PredLabel, PredScore)
+# tt = table(pred = train_norm$PredLabel, actual = train_norm$default.payment.next.month)
+# error_train = 1 - sum(diag(tt)) / sum(tt)
+# error_train
+
+
+
+#Another package (slow - train time: takes ~10 min, but has more attachments, shows confusion matrix and error)
+# library(adabag)
+
+train_norm$default.payment.next.month <- as.factor(train_norm$default.payment.next.month)
+abt <- boosting(default.payment.next.month ~ ., data = train_norm)
+# Variable importance with respect to most important variable
+sort(abt$importance/max(abt$importance), decreasing = TRUE)
+#        PAY_0     PAY_AMT3     PAY_AMT1        PAY_5    LIMIT_BAL 
+# 1.0000000000 0.0668812095 0.0469750718 0.0464909929 0.0384774264 
+#        PAY_6    BILL_AMT1        PAY_3    EDUCATION     PAY_AMT2 
+# 0.0315244971 0.0312812159 0.0237877992 0.0180606923 0.0165200485 
+#     PAY_AMT4     PAY_AMT5    BILL_AMT4    BILL_AMT3     MARRIAGE 
+# 0.0067207012 0.0061924826 0.0057661431 0.0051095984 0.0047488679 
+#    BILL_AMT2        PAY_2     PAY_AMT6          SEX          AGE 
+# 0.0038661903 0.0025736510 0.0022537677 0.0021115763 0.0016453458 
+#        PAY_4    BILL_AMT6    BILL_AMT5 
+# 0.0014192298 0.0012443866 0.0008954529 
+
+tt = table(pred = abt$class, actual = train$default.payment.next.month)
+error_train = 1 - sum(diag(tt)) / sum(tt)
+error_train
+# [1] 0.1779583
+
+
+#another way to find error_train (and confusion matrix)
+# predt = predict(abt, train_norm, type = "prob")
+# predt
+
+# $confusion
+#                Observed Class
+# Predicted Class     0     1
+#               0 17755  3345
+#               1   926  1974
+
+# $error
+# [1] 0.1779583
+
+
+
+#Part 3.1.2: plot train lift curve for AB
+PredABLabel = data.frame(as.numeric(predt$class))
+names(PredABLabel) <- "PredABLabel"
+
+# sum(predict(abt, train_norm, type="prob")$prob[,2] > 0.5)
+# # [1] 2900
+
+PredABScore = predict(abt, train_norm, type="prob")$prob[,2]
+length(PredABScore)
+
+train_norm = data.frame(train_norm, PredABLabel, PredABScore)
+head(train_norm)
+
+
+#Part 3.1.2: plot train lift curve for AB
+gtt = gains(actual=as.numeric(train_norm$default.payment.next.month), predicted=train_norm$PredABScore,optimal=TRUE)
+cpt_y = gtt$cume.pct.of.total
+cpt_x = gtt$depth
+
+predicted = table(train_norm$PredABLabel)[2]
+predicted
+#    1 
+# 2900 
+xx = cpt_x / 100 * 24000
+yy = cpt_y * predicted
+#plot(xx,yy)
+xx = prepend(xx,0,before=1)
+yy = prepend(yy,0,before=1)
+fit = lm(yy ~ poly(xx,3,raw=TRUE))
+
+xx = 0:24000
+model_yy = predict(fit,data.frame(xx))
+
+
+# png("/Users/qinqingao/Desktop/Columbia/Courses/Fall 2018/EECS 6690/Project/figs/AB_lift_chart_train.png")
+plot(xx, model_yy, col="green",xlab="Number of total data", ylab="Cumulative number of target data",
+	type = 'l', lwd = 3)
+
+best_yy = rep(predicted,24001)
+for(i in 0:predicted){
+  best_yy[i+1] = i
+}
+
+lines(xx,best_yy,col="red",lwd=2)
+
+base_yy = predicted / 24000 * xx
+lines(xx,base_yy,col="blue", lwd = 2)
+
+legend('bottomright', legend=c("best curve","model", "baseline"), col = c("red","green","blue"), lwd=c(1,1,1),cex=1)
+title("Lift chart of AdaBoost (training)")
+# dev.off()
+
+
+#Calculate area ratio
+a1t = sum(model_yy-base_yy)
+a2t = sum(best_yy-base_yy)
+a1t/a2t
+# [1] 0.5152811
+
+
+
+#########################
+
+#   3.1  ABoost Test    # 
+
+#########################
+
+
+#Part 3.2.1: test data with AB
+predv = predict(abt, valid_norm)
+predv
+# $confusion
+#                Observed Class
+# Predicted Class    0    1
+#               0 4468  852
+#               1  215  465
+
+# $error
+# [1] 0.1778333
+
+
+
+#Part 3.2.2: plot train lift curve for AB
+PredABLabelV = data.frame(as.numeric(predv$class))
+names(PredABLabelV) <- "PredABLabelV"
+
+# sum(predict(abt, valid_norm, type="prob")$prob[,2] > 0.5)
+# # [1] 680
+
+PredABScoreV = predict(abt, valid_norm, type="prob")$prob[,2]
+length(PredABScoreV)
+
+valid_norm = data.frame(valid_norm, PredABLabelV, PredABScoreV)
+head(valid_norm)
+
+
+gtv = gains(actual=as.numeric(valid_norm$default.payment.next.month), predicted=valid_norm$PredABScoreV,optimal=TRUE)
+cpv_y = gtv$cume.pct.of.total
+cpv_x = gtv$depth
+
+predictedV = table(valid_norm$PredABLabelV)[2]
+predictedV
+#    1 
+# 680 
+xx = cpv_x / 100 * 6000
+yy = cpv_y * predictedV
+# plot(xx,yy)
+
+xx = prepend(xx,0,before=1)
+yy = prepend(yy,0,before=1)
+fit = lm(yy ~ poly(xx,3,raw=TRUE))
+
+xx = 0:6000
+model_yy = predict(fit,data.frame(xx))
+
+
+# png("/Users/qinqingao/Desktop/Columbia/Courses/Fall 2018/EECS 6690/Project/figs/AB_lift_chart_test.png")
+plot(xx, model_yy, col="green",xlab="Number of total data", ylab="Cumulative number of target data",
+	type = 'l', lwd = 3)
+
+best_yy = rep(predictedV, 6001)
+for(i in 0:predictedV){
+  best_yy[i+1] = i
+}
+
+lines(xx,best_yy,col="red",lwd=2)
+
+base_yy = predictedV / 6000 * xx
+lines(xx,base_yy,col="blue", lwd = 2)
+
+legend('bottomright', legend=c("best curve","model", "baseline"), col = c("red","green","blue"), lwd=c(1,1,1),cex=1)
+title("Lift chart of AdaBoost (validation)")
+# dev.off()
+
+
+#Calculate area ratio
+a1v = sum(model_yy-base_yy)
+a2v = sum(best_yy-base_yy)
+a1v/a2v
+# [1] 0.4595666
+
+
+
+#Part 3.2.3: Use SSM(Sorting Smoothing Method) to estimate real probability
+
+#1. order the valid data according to predictive probability
+valid_norm_sort = valid_norm[order(PredABScoreV), ]
+#2. use SSM formula to evaluate actural probability 'Pi', we choose n =50 according to the paper
+VALIDSIZE = dim(valid_norm)[1]
+
+n = 50
+actural_p_valid = rep(0, VALIDSIZE)
+pred_valid = round(valid_norm_sort$PredABScoreV)
+pred_valid = prepend(pred_valid, rep(0, n), before=1)
+pred_valid = append(pred_valid, rep(0, n))
+
+for(i in 1:VALIDSIZE){
+  actural_p_valid[i] = sum(pred_valid[i:(i + 2 * n)])/(2 * n + 1)
+}
+valid_norm_sort = data.frame(valid_norm_sort, actural_p_valid)
+
+
+# png("/Users/qinqingao/Desktop/Columbia/Courses/Fall 2018/EECS 6690/Project/figs/Scatter plot diagram of AB.png")
+plot(valid_norm_sort$PredABScoreV, valid_norm_sort$actural_p_valid,
+	xlab = "Predicted Probability", ylab = "Actual probability")
+
+yy = valid_norm_sort$actural_p_valid
+xx = valid_norm_sort$PredABScoreV
+actual_fit = lm(yy ~ xx)
+
+xx = seq(0, 1 : 0.1)
+yy = predict(actual_fit, data.frame((xx)))
+lines(xx, yy)
+
+summary(actual_fit)
+legend('topleft',legend=c("y = 1.846410x - 0.451027","R^2 = 0.6517"))
+# dev.off()
+```
+
+
+
