@@ -518,7 +518,7 @@ legend(0.03,0.9,legend=c("y = 0.975379x - 0.132412","R^2 = 0.4808"))
 
 #########################
 
-#   3.1  ABoost Train   # 
+#     3.1  AB Train     # 
 
 #########################
 
@@ -527,19 +527,6 @@ legend(0.03,0.9,legend=c("y = 0.975379x - 0.132412","R^2 = 0.4808"))
 # library(fastAdaboost)
 # ab <- adaboost(default.payment.next.month ~ ., data = train, 10)
 # summary(ab)
-
-# pred = predict(ab, train_norm, type = "response")
-# PredLabel = data.frame(round(pred))
-# names(PredLabel) <- "PredLabel"
-
-# PredScore = data.frame(pred)
-# names(PredScore) <- "PredScore"
-
-# train_norm = data.frame(train_norm, PredLabel, PredScore)
-# tt = table(pred = train_norm$PredLabel, actual = train_norm$default.payment.next.month)
-# error_train = 1 - sum(diag(tt)) / sum(tt)
-# error_train
-
 
 
 #Another package (slow - train time: takes ~10 min, but has more attachments, shows confusion matrix and error)
@@ -566,23 +553,23 @@ error_train
 # [1] 0.1779583
 
 
-#another way to find error_train (and confusion matrix)
-# predt = predict(abt, train_norm, type = "prob")
-# predt
 
-# $confusion
-#                Observed Class
-# Predicted Class     0     1
-#               0 17755  3345
-#               1   926  1974
+scale01 <- function(x){
+     (x - min(x)) / (max(x) - min(x))
+ }
 
-# $error
-# [1] 0.1779583
+train_norm = train
 
+for(name in names(train)){
+     if(name != "default.payment.next.month"){
+         train_norm[name] <- scale01(train_norm[name])
+     }     
+ }
+ 
 
+pred = predict(abt, train_norm)
 
-#Part 3.1.2: plot train lift curve for AB
-PredABLabel = data.frame(as.numeric(predt$class))
+PredABLabel = data.frame(as.numeric(pred$class))
 names(PredABLabel) <- "PredABLabel"
 
 # sum(predict(abt, train_norm, type="prob")$prob[,2] > 0.5)
@@ -595,7 +582,6 @@ train_norm = data.frame(train_norm, PredABLabel, PredABScore)
 head(train_norm)
 
 
-#Part 3.1.2: plot train lift curve for AB
 gtt = gains(actual=as.numeric(train_norm$default.payment.next.month), predicted=train_norm$PredABScore,optimal=TRUE)
 cpt_y = gtt$cume.pct.of.total
 cpt_x = gtt$depth
@@ -606,7 +592,8 @@ predicted
 # 2900 
 xx = cpt_x / 100 * 24000
 yy = cpt_y * predicted
-#plot(xx,yy)
+# plot(xx,yy)
+
 xx = prepend(xx,0,before=1)
 yy = prepend(yy,0,before=1)
 fit = lm(yy ~ poly(xx,3,raw=TRUE))
@@ -615,11 +602,11 @@ xx = 0:24000
 model_yy = predict(fit,data.frame(xx))
 
 
-# png("/Users/qinqingao/Desktop/Columbia/Courses/Fall 2018/EECS 6690/Project/figs/AB_lift_chart_train.png")
+# png("/Users/qinqingao/Desktop/Columbia/Courses/Fall 2018/EECS 6690/Project/figs/AB_lift_chart_test.png")
 plot(xx, model_yy, col="green",xlab="Number of total data", ylab="Cumulative number of target data",
-	type = 'l', lwd = 3)
+  type = 'l', lwd = 3)
 
-best_yy = rep(predicted,24001)
+best_yy = rep(predicted, 24001)
 for(i in 0:predicted){
   best_yy[i+1] = i
 }
@@ -635,23 +622,25 @@ title("Lift chart of AdaBoost (training)")
 
 
 #Calculate area ratio
-a1t = sum(model_yy-base_yy)
-a2t = sum(best_yy-base_yy)
-a1t/a2t
+a1v = sum(model_yy-base_yy)
+a2v = sum(best_yy-base_yy)
+a1v/a2v
 # [1] 0.5152811
+
+
 
 
 
 #########################
 
-#   3.1  ABoost Test    # 
+#     3.2  AB Test      # 
 
 #########################
 
 
 #Part 3.2.1: test data with AB
 predv = predict(abt, valid_norm)
-predv
+# predv
 # $confusion
 #                Observed Class
 # Predicted Class    0    1
@@ -663,7 +652,7 @@ predv
 
 
 
-#Part 3.2.2: plot train lift curve for AB
+#Part 3.2.2: plot test lift curve for AB
 PredABLabelV = data.frame(as.numeric(predv$class))
 names(PredABLabelV) <- "PredABLabelV"
 
@@ -699,7 +688,7 @@ model_yy = predict(fit,data.frame(xx))
 
 # png("/Users/qinqingao/Desktop/Columbia/Courses/Fall 2018/EECS 6690/Project/figs/AB_lift_chart_test.png")
 plot(xx, model_yy, col="green",xlab="Number of total data", ylab="Cumulative number of target data",
-	type = 'l', lwd = 3)
+  type = 'l', lwd = 3)
 
 best_yy = rep(predictedV, 6001)
 for(i in 0:predictedV){
@@ -745,7 +734,7 @@ valid_norm_sort = data.frame(valid_norm_sort, actural_p_valid)
 
 # png("/Users/qinqingao/Desktop/Columbia/Courses/Fall 2018/EECS 6690/Project/figs/Scatter plot diagram of AB.png")
 plot(valid_norm_sort$PredABScoreV, valid_norm_sort$actural_p_valid,
-	xlab = "Predicted Probability", ylab = "Actual probability")
+  xlab = "Predicted Probability", ylab = "Actual probability")
 
 yy = valid_norm_sort$actural_p_valid
 xx = valid_norm_sort$PredABScoreV
