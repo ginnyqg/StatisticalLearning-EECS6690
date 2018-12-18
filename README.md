@@ -16,7 +16,7 @@
 
 ![img](CreditDefault/figs/VarImp_Top10.png)
 
-
+![img](CreditDefault/figs/corr_plot.png)
 
 
 
