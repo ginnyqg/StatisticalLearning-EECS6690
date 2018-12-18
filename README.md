@@ -13,3 +13,10 @@
 |Random Forest           |0.181    	    |0.186       	|0.468       	|0.458       |
 |AdaBoost                |0.179    	    |0.178       	|0.515       	|0.460       |
 
+
+![img](CreditDefault/figs/VarImp_Top10.png)
+
+
+
+
+
