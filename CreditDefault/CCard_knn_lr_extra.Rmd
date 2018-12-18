@@ -21,12 +21,21 @@ library(rlang)
 library(geiger)
 library(corrplot)
 library(adabag)
+library(data.table)
+library(ggplot2)    
+library(Ckmeans.1d.dp)
+library(xgboost)
 
 setwd('/Users/qinqingao/Desktop/Columbia/Courses/Fall 2018/EECS 6690/Project')
 require(gdata)
 raw <- read.xls ("default of credit card clients.xls", sheet = 1, skip = 1, row.names = 1)
 dim(raw)
 # [1] 30000    24
+
+#check any null value, none (30000 * 24 = 720000)
+table(is.na(raw))
+#  FALSE 
+# 720000 
 ```
 
 
@@ -760,4 +769,303 @@ legend('topleft',legend=c("y = 1.846410x - 0.451027","R^2 = 0.6517"))
 ```
 
 
+
+## 7. Modeling and analysis with XGBoost
+
+```{r}
+#################################
+
+#           4. XGBoost          # 
+
+#################################
+
+#normalizing numerical variables
+
+scale01 <- function(x){
+     (x - min(x)) / (max(x) - min(x))
+ }
+
+train_norm = train
+valid_norm = test
+
+for(name in names(train)){
+     if(name != "default.payment.next.month"){
+         train_norm[name] <- scale01(train_norm[name])
+         valid_norm[name] <- scale01(valid_norm[name])
+     }     
+ }
+
+#convert data frame to data table
+setDT(train_norm)
+setDT(valid_norm)
+
+#new train, new test without target variable
+labels <- as.numeric(train_norm$default.payment.next.month)
+ts_label <- as.numeric(valid_norm$default.payment.next.month)
+new_tr <- model.matrix(~ .+0, data = train_norm[ , -c("default.payment.next.month"), with = F]) 
+new_ts <- model.matrix(~ .+0, data = valid_norm[ , -c("default.payment.next.month"), with = F])
+
+
+#convert data table into a matrix, to use XGBoost
+dtrain <- xgb.DMatrix(data = new_tr, label = labels) 
+dtest <- xgb.DMatrix(data = new_ts, label = ts_label)
+
+
+#########################
+
+#    4.1  XGB Train     # 
+
+#########################
+
+
+#Part 4.1.1: train data with XB
+params <- list(booster = "gbtree", objective = "binary:logistic", 
+  eta=0.1, gamma=0, max_depth=6, min_child_weight=1, subsample=1, colsample_bytree=1)
+
+#Cross Validate to choose best nrounds, and CV error
+xgbcv <- xgb.cv(params = params, data = dtrain, 
+  nrounds = 100, nfold = 5, showsd = T, stratified = T, print.every.n = 10, early.stop.round = 50, maximize = F)
+# xgbcv
+
+xgbcv$best_iteration
+# [1] 28
+
+# xgbcv
+# Best iteration:
+#  iter train_error_mean train_error_std test_error_mean test_error_std
+#    28        0.1625418    0.0009313005       0.1784166    0.005228473
+
+# test_error_mean
+# 0.1784166
+
+
+#XGBoost model training, nrounds = 28
+xgb1 <- xgb.train (params = params, data = dtrain, 
+  nrounds = 28, watchlist = list(val=dtest,train=dtrain), 
+  print.every.n = 10, early.stop.round = 50, maximize = F , eval_metric = "error")
+
+# xgb1
+# niter: 28
+# best_iteration : 26 
+# best_ntreelimit : 26 
+# best_score : 0.165792 
+
+
+#Plot Top 10 Feature Importance
+mat <- xgb.importance (feature_names = colnames(new_tr),model = xgb1)
+xgb.ggplot.importance (importance_matrix = mat[1 : 10], rel_to_first = TRUE) + 
+    labs(title = "Feature Importance (Top 10)", x = "Features", y = "Relative Importance") + 
+    theme(plot.title = element_text(hjust = 0.5), 
+    title = element_text(size = 14, face = 'bold'),
+        axis.text.x = element_text(size = 10), 
+        axis.text.y = element_text(size = 10))
+
+
+
+#Part 4.1.2: plot test lift curve for XGBoost
+pred = predict(xgb1, dtrain)
+
+PredXBLabel = ifelse(pred > 0.5, 1, 0)
+confusionMatrix(table(PredXBLabel, labels))
+err <- 1-confusionMatrix(table(PredXBLabel, labels))$overall['Accuracy']
+err
+# 0.1657917
+
+PredXBLabel = data.frame(as.numeric(PredXBLabel))
+names(PredXBLabel) <- "PredXBLabel"
+
+PredXBScore = pred
+length(PredXBScore)
+
+train_norm = data.frame(train_norm, PredXBLabel, PredXBScore)
+head(train_norm)
+
+
+gtt = gains(actual=as.numeric(train_norm$default.payment.next.month), predicted=train_norm$PredXBScore,optimal=TRUE)
+cpt_y = gtt$cume.pct.of.total
+cpt_x = gtt$depth
+
+predicted = table(train_norm$PredXBLabel)[2]
+predicted
+#    1 
+# 2894 
+xx = cpt_x / 100 * 24000
+yy = cpt_y * predicted
+# plot(xx,yy)
+
+xx = prepend(xx,0,before=1)
+yy = prepend(yy,0,before=1)
+fit = lm(yy ~ poly(xx,3,raw=TRUE))
+
+xx = 0:24000
+model_yy = predict(fit,data.frame(xx))
+
+
+# png("/Users/qinqingao/Desktop/Columbia/Courses/Fall 2018/EECS 6690/Project/figs/XB_lift_chart_train.png")
+plot(xx, model_yy, col="green",xlab="Number of total data", ylab="Cumulative number of target data",
+  type = 'l', lwd = 3)
+
+best_yy = rep(predicted, 24001)
+for(i in 0:predicted){
+  best_yy[i+1] = i
+}
+
+lines(xx,best_yy,col="red",lwd=2)
+
+base_yy = predicted / 24000 * xx
+lines(xx,base_yy,col="blue", lwd = 2)
+
+legend('bottomright', legend=c("best curve","model", "baseline"), col = c("red","green","blue"), lwd=c(1,1,1),cex=1)
+title("Lift chart of XGBoost (training)")
+# dev.off()
+
+
+#Calculate area ratio
+a1v = sum(model_yy-base_yy)
+a2v = sum(best_yy-base_yy)
+a1v/a2v
+# [1] 0.5578075
+
+
+
+
+#########################
+
+#     4.2  XB Test      # 
+
+#########################
+
+
+#Part 4.2.1: test data with XB
+#model prediction on dtest
+predv = predict(xgb1, dtest)
+
+PredXBLabelV = ifelse(predv > 0.5, 1, 0)
+confusionMatrix(table(PredXBLabelV, ts_label))
+errv <- 1-confusionMatrix(table(PredXBLabelV, ts_label))$overall['Accuracy']
+errv 
+# 0.1758333 
+
+# Confusion Matrix and Statistics
+
+#             ts_label
+# PredXBLabelV    0    1
+#            0 4427  799
+#            1  256  518
+                                          
+#                Accuracy : 0.8242          
+#                  95% CI : (0.8143, 0.8337)
+#     No Information Rate : 0.7805          
+#     P-Value [Acc > NIR] : < 2.2e-16       
+                                          
+#                   Kappa : 0.3976          
+#  Mcnemar's Test P-Value : < 2.2e-16       
+                                          
+#             Sensitivity : 0.9453          
+#             Specificity : 0.3933          
+#          Pos Pred Value : 0.8471          
+#          Neg Pred Value : 0.6693          
+#              Prevalence : 0.7805          
+#          Detection Rate : 0.7378          
+#    Detection Prevalence : 0.8710          
+#       Balanced Accuracy : 0.6693          
+                                          
+#        'Positive' Class : 0 
+
+PredXBLabelV = data.frame(as.numeric(PredXBLabelV))
+names(PredXBLabelV) <- "PredXBLabelV"
+
+
+PredXBScoreV = predv
+length(PredXBScoreV)
+# [1] 6000
+
+
+valid_norm = data.frame(valid_norm, PredXBLabelV, PredXBScoreV)
+head(valid_norm)
+
+
+#Part 4.2.2: plot test lift curve for XB
+gtv = gains(actual=as.numeric(valid_norm$default.payment.next.month), predicted=valid_norm$PredXBScoreV,optimal=TRUE)
+cpv_y = gtv$cume.pct.of.total
+cpv_x = gtv$depth
+
+predictedV = table(valid_norm$PredXBLabelV)[2]
+predictedV
+#    1 
+# 774 
+xx = cpv_x / 100 * 6000
+yy = cpv_y * predictedV
+# plot(xx,yy)
+
+xx = prepend(xx,0,before=1)
+yy = prepend(yy,0,before=1)
+fit = lm(yy ~ poly(xx,3,raw=TRUE))
+
+xx = 0:6000
+model_yy = predict(fit,data.frame(xx))
+
+
+# png("/Users/qinqingao/Desktop/Columbia/Courses/Fall 2018/EECS 6690/Project/figs/XB_lift_chart_test.png")
+plot(xx, model_yy, col="green",xlab="Number of total data", ylab="Cumulative number of target data",
+  type = 'l', lwd = 3)
+
+best_yy = rep(predictedV, 6001)
+for(i in 0:predictedV){
+  best_yy[i+1] = i
+}
+
+lines(xx,best_yy,col="red",lwd=2)
+
+base_yy = predictedV / 6000 * xx
+lines(xx,base_yy,col="blue", lwd = 2)
+
+legend('bottomright', legend=c("best curve","model", "baseline"), col = c("red","green","blue"), lwd=c(1,1,1),cex=1)
+title("Lift chart of XGBoost (validation)")
+# dev.off()
+
+
+#Calculate area ratio
+a1v = sum(model_yy-base_yy)
+a2v = sum(best_yy-base_yy)
+a1v/a2v
+# [1] 0.4678744
+
+
+
+#Part 4.2.3: Use SSM(Sorting Smoothing Method) to estimate real probability
+
+#1. order the valid data according to predictive probability
+valid_norm_sort = valid_norm[order(PredXBScoreV), ]
+#2. use SSM formula to evaluate actural probability 'Pi', we choose n =50 according to the paper
+VALIDSIZE = dim(valid_norm)[1]
+
+n = 50
+actural_p_valid = rep(0, VALIDSIZE)
+pred_valid = round(valid_norm_sort$PredXBScoreV)
+pred_valid = prepend(pred_valid, rep(0, n), before=1)
+pred_valid = append(pred_valid, rep(0, n))
+
+for(i in 1:VALIDSIZE){
+  actural_p_valid[i] = sum(pred_valid[i:(i + 2 * n)])/(2 * n + 1)
+}
+valid_norm_sort = data.frame(valid_norm_sort, actural_p_valid)
+
+
+# png("/Users/qinqingao/Desktop/Columbia/Courses/Fall 2018/EECS 6690/Project/figs/Scatter plot diagram of XB.png")
+plot(valid_norm_sort$PredXBScoreV, valid_norm_sort$actural_p_valid,
+  xlab = "Predicted Probability", ylab = "Actual probability")
+
+yy = valid_norm_sort$actural_p_valid
+xx = valid_norm_sort$PredXBScoreV
+actual_fit = lm(yy ~ xx)
+
+xx = seq(0, 1 : 0.1)
+yy = predict(actual_fit, data.frame((xx)))
+lines(xx, yy)
+
+summary(actual_fit)
+legend('topleft',legend=c("y = 1.535629x - 0.236737","R^2 = 0.7806"))
+# dev.off()
+```
 
